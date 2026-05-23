@@ -1,0 +1,24 @@
+# InsightFlow Backend Dependencies
+# ================================
+
+# Web framework — FastAPI is async-first and auto-generates API docs
+fastapi==0.115.0
+uvicorn==0.30.6          # ASGI server to run FastAPI
+
+# Data processing
+pandas==2.2.2            # DataFrame operations, CSV parsing
+numpy==1.26.4            # Numerical computing (pandas depends on this)
+scipy==1.14.1            # Statistical tests (skewness, correlation significance)
+
+# Visualization (server-side chart generation)
+matplotlib==3.9.2        # Core plotting library
+seaborn==0.13.2          # Statistical visualization (built on matplotlib)
+
+# Database
+sqlalchemy==2.0.35       # ORM — maps Python classes to database tables
+
+# File handling
+python-multipart==0.0.9  # Required by FastAPI for file upload (UploadFile)
+
+# Utilities
+pydantic==2.9.2          # Data validation (FastAPI uses this internally too)
