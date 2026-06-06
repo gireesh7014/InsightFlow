@@ -21,20 +21,26 @@ KEY CONCEPTS:
   - UploadFile: FastAPI's file upload handler
 """
 
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import pandas as pd
 import io
+import json
 import logging
 import time
 
 from app.models.database import engine, get_db, Base
-from app.models.schemas import AnalysisResponse, UploadHistoryItem, ErrorResponse
-from app.db.models import UploadRecord
+from app.models.schemas import (
+    AnalysisResponse, UploadHistoryItem, ErrorResponse,
+    QueryRequest, QueryResponse, QueryHistoryItem
+)
+from app.db.models import UploadRecord, QueryRecord
 from app.services.analyzer import analyze_dataframe, generate_summary
 from app.services.rule_engine import run_rule_engine
 from app.services.visualizer import generate_all_charts
+from app.services.file_storage import save_uploaded_file
 
 # ─── Logging setup ────────────────────────────────────────────
 logging.basicConfig(
@@ -47,8 +53,8 @@ logger = logging.getLogger("insightflow")
 # ─── Create FastAPI app ───────────────────────────────────────
 app = FastAPI(
     title="InsightFlow API",
-    description="Decision Intelligence System — Upload CSV data and get ranked, explainable insights",
-    version="1.0.0",
+    description="Decision Intelligence System — Upload CSV data, get ranked insights, and ask questions about your data",
+    version="2.0.0",
     docs_url="/docs",      # Swagger UI at http://localhost:8000/docs
     redoc_url="/redoc",     # ReDoc at http://localhost:8000/redoc
 )
@@ -154,6 +160,10 @@ async def analyze_csv(
         # Parse CSV — BytesIO makes bytes look like a file to pandas
         df = pd.read_csv(io.BytesIO(contents))
         logger.info(f"Parsed '{file.filename}': {len(df)} rows × {len(df.columns)} columns")
+        
+        # Save file to disk for later querying (Week 2)
+        saved_name = save_uploaded_file(file.filename, contents)
+        logger.info(f"Saved file for querying: {saved_name}")
         
     except pd.errors.EmptyDataError:
         raise HTTPException(
@@ -318,4 +328,159 @@ def health_check():
     Simple health check endpoint. Returns 200 if the server is running.
     Used by deployment platforms (Railway, Render) to verify the server is alive.
     """
-    return {"status": "healthy", "service": "InsightFlow API", "version": "1.0.0"}
+    return {"status": "healthy", "service": "InsightFlow API", "version": "2.0.0"}
+
+
+# ═══════════════════════════════════════════════════════════════
+# ROUTE: POST /query — Natural Language Query (Week 2)
+# ═══════════════════════════════════════════════════════════════
+@app.post(
+    "/query",
+    response_model=QueryResponse,
+    summary="Ask a question about your data",
+    description="Send a natural language question about a previously uploaded dataset. "
+                "The system runs a 4-node pipeline: Query Understanding → Data Retrieval → "
+                "Statistical Analysis → LLM Synthesis."
+)
+async def query_data(
+    request: QueryRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Natural language query endpoint.
+    
+    WHAT HAPPENS:
+    1. User sends: {"query": "Why are sales dropping?", "filename": "sales.csv"}
+    2. Pipeline runs 4 nodes:
+       - Node 1: Understand the question (intent = trend_analysis)
+       - Node 2: Load and filter the data
+       - Node 3: Run OLS regression, find p-value
+       - Node 4: Write plain-English explanation using the real numbers
+    3. Response includes the explanation + all the underlying data
+    
+    WHY NOT JUST SEND THE CSV TO AN LLM?
+    Because LLMs hallucinate numbers. Our pipeline ensures every
+    statistic comes from actual computation (Node 3), not LLM generation.
+    """
+    from app.pipeline.graph import run_pipeline
+    
+    start_time = time.time()
+    logger.info(f"Query: '{request.query}' on '{request.filename}'")
+    
+    # Run the 4-node pipeline
+    result = await run_pipeline(request.query, request.filename)
+    elapsed = time.time() - start_time
+    
+    # Save query to database
+    try:
+        query_record = QueryRecord(
+            filename=request.filename,
+            query=request.query,
+            intent=result.get("query_context", {}).get("intent", "unknown"),
+            confidence=result.get("confidence", "Unknown"),
+            explanation=result.get("explanation", ""),
+            pipeline_log_json=json.dumps(result.get("pipeline_log", [])),
+        )
+        db.add(query_record)
+        db.commit()
+        logger.info(f"Saved query record #{query_record.id}")
+    except Exception as e:
+        logger.error(f"Failed to save query record: {e}")
+        db.rollback()
+    
+    return QueryResponse(
+        explanation=result.get("explanation", "Analysis complete."),
+        confidence=result.get("confidence", "Unknown"),
+        confidence_reason=result.get("confidence_reason", ""),
+        follow_up_questions=result.get("follow_up_questions", []),
+        query_context=result.get("query_context", {}),
+        analysis_result=result.get("analysis_result", {}),
+        data_summary={
+            "rows": result.get("data_slice", {}).get("rows", 0),
+            "columns_used": result.get("data_slice", {}).get("columns_used", []),
+            "summary_stats": result.get("data_slice", {}).get("summary_stats", {}),
+        },
+        pipeline_log=result.get("pipeline_log", []),
+        elapsed_s=round(elapsed, 2),
+        query=request.query,
+        filename=request.filename,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+# ROUTE: GET /query/stream — SSE Streaming Query
+# ═══════════════════════════════════════════════════════════════
+@app.get(
+    "/query/stream",
+    summary="Stream query results via SSE",
+    description="Sends real-time updates as each pipeline node completes. "
+                "Use EventSource in the frontend to receive these events."
+)
+async def query_stream(
+    query: str,
+    filename: str,
+):
+    """
+    SERVER-SENT EVENTS (SSE) Streaming endpoint.
+    
+    HOW SSE WORKS:
+    1. Client opens a long-lived HTTP connection (using EventSource API)
+    2. Server keeps the connection open and sends events as they happen
+    3. Each event is formatted as: "data: {json}\n\n"
+    4. Client receives events in real-time without polling
+    
+    DIFFERENCE FROM WEBSOCKETS:
+    - SSE is one-directional (server → client only)
+    - SSE uses standard HTTP (works through proxies, load balancers)
+    - SSE auto-reconnects on failure
+    - WebSockets are bidirectional (needed for chat, not for our use case)
+    
+    For our pipeline, SSE is perfect — we just need to push status
+    updates as each node completes.
+    """
+    from app.pipeline.graph import run_pipeline_streaming
+    
+    async def event_generator():
+        async for event in run_pipeline_streaming(query, filename):
+            yield f"data: {json.dumps(event, default=str)}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        }
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+# ROUTE: GET /query/history — Query history
+# ═══════════════════════════════════════════════════════════════
+@app.get(
+    "/query/history",
+    response_model=list[QueryHistoryItem],
+    summary="Get query history",
+    description="Returns recent queries and their metadata"
+)
+def get_query_history(db: Session = Depends(get_db), limit: int = 20):
+    """Returns past queries so users can review previous analysis sessions."""
+    records = (
+        db.query(QueryRecord)
+        .order_by(QueryRecord.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return records
+
+
+# ═══════════════════════════════════════════════════════════════
+# ROUTE: GET /files — List available datasets
+# ═══════════════════════════════════════════════════════════════
+@app.get("/files", summary="List uploaded datasets")
+def list_files():
+    """Returns list of uploaded CSV files available for querying."""
+    from app.services.file_storage import get_available_files
+    files = get_available_files()
+    return {"files": files, "count": len(files)}

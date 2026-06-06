@@ -165,3 +165,71 @@ class ErrorResponse(BaseModel):
     error: str
     detail: str
     suggestion: Optional[str] = None
+
+
+# ═══════════════════════════════════════════════════════════════
+# WEEK 2 — Query Pipeline Schemas
+# ═══════════════════════════════════════════════════════════════
+
+class QueryRequest(BaseModel):
+    """
+    Request body for POST /query.
+    
+    The user sends a natural-language question about their uploaded data.
+    The pipeline processes it through 4 nodes and returns an answer.
+    """
+    query: str = Field(..., description="Natural language question about the data")
+    filename: str = Field(..., description="Name of the previously uploaded CSV file")
+
+
+class PipelineStep(BaseModel):
+    """
+    A single step in the pipeline execution log.
+    
+    This is what gets sent to the frontend during SSE streaming,
+    so the user sees real-time progress through the pipeline.
+    """
+    node: str = Field(..., description="Node name: query_understanding, data_retrieval, analysis, synthesis")
+    status: str = Field(..., description="running, complete, or error")
+    duration_ms: int = Field(0, description="How long this node took in milliseconds")
+    details: str = Field("", description="Human-readable description of what happened")
+
+
+class QueryResponse(BaseModel):
+    """
+    Complete response from the query pipeline.
+    
+    Contains the LLM explanation, the underlying statistics,
+    confidence assessment, and the full audit trail.
+    """
+    # Main answer
+    explanation: str = Field(..., description="Plain-English answer to the user's question")
+    confidence: str = Field(..., description="High, Medium, or Low")
+    confidence_reason: str = Field("", description="Why this confidence level")
+    
+    # Follow-up suggestions
+    follow_up_questions: List[str] = Field(default_factory=list)
+    
+    # Pipeline metadata
+    query_context: dict = Field(default_factory=dict, description="Node 1 output: intent, columns, etc.")
+    analysis_result: dict = Field(default_factory=dict, description="Node 3 output: stats, p-values, etc.")
+    data_summary: dict = Field(default_factory=dict, description="Node 2 summary: rows, columns")
+    pipeline_log: List[dict] = Field(default_factory=list, description="Step-by-step execution log")
+    elapsed_s: float = Field(0.0, description="Total pipeline time in seconds")
+    
+    # Original query
+    query: str = Field("", description="The original user question")
+    filename: str = Field("", description="Dataset filename")
+
+
+class QueryHistoryItem(BaseModel):
+    """A recorded query and its response."""
+    id: int
+    query: str
+    intent: str
+    confidence: str
+    filename: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

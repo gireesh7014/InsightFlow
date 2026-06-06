@@ -73,3 +73,43 @@ class UploadRecord(Base):
     def __repr__(self):
         """String representation for debugging"""
         return f"<Upload #{self.id}: {self.filename} ({self.row_count} rows)>"
+
+
+class QueryRecord(Base):
+    """
+    Tracks every natural-language query made through the pipeline.
+    
+    This lets users:
+    1. See their question history
+    2. Re-visit past answers without re-running the pipeline
+    3. Build a conversation thread about a dataset
+    
+    Table name: 'query_records'
+    """
+    __tablename__ = "query_records"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    
+    # Link to the dataset
+    filename = Column(String(255), nullable=False)
+    
+    # Query info
+    query = Column(Text, nullable=False)           # Original user question
+    intent = Column(String(50), nullable=True)     # Classified intent
+    confidence = Column(String(20), nullable=True) # High, Medium, Low
+    
+    # Response
+    explanation = Column(Text, nullable=True)       # Generated explanation
+    
+    # Pipeline metadata (stored as JSON string)
+    pipeline_log_json = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False
+    )
+
+    def __repr__(self):
+        return f"<Query #{self.id}: '{self.query[:50]}...' ({self.intent})>"

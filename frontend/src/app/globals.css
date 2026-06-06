@@ -1,0 +1,178 @@
+@import "tailwindcss";
+
+/*
+  DESIGN SYSTEM — InsightFlow Premium Dark Theme
+  ===============================================
+  This file defines CSS custom properties (variables) that create
+  a consistent, premium look across the entire app.
+  
+  WHY CSS VARIABLES?
+  Instead of hardcoding colors everywhere, we define them once here.
+  To change the entire theme, you only edit this file.
+  
+  Tailwind's @theme directive registers these as Tailwind utilities,
+  so you can use them as: bg-[var(--surface-primary)], text-[var(--accent)], etc.
+*/
+
+:root {
+  /* ─── Base Colors ─── */
+  --background: #0a0b10;
+  --foreground: #e8eaed;
+
+  /* ─── Surface layers (cards, panels, modals) ─── */
+  --surface-primary: #12141c;
+  --surface-secondary: #1a1d2b;
+  --surface-tertiary: #222538;
+  --surface-hover: #2a2e42;
+
+  /* ─── Accent — Emerald green (trustworthy, data-oriented) ─── */
+  --accent: #10b981;
+  --accent-light: #34d399;
+  --accent-dark: #059669;
+  --accent-glow: rgba(16, 185, 129, 0.15);
+
+  /* ─── Severity colors (for insights) ─── */
+  --critical: #ef4444;
+  --critical-bg: rgba(239, 68, 68, 0.1);
+  --warning: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --info: #3b82f6;
+  --info-bg: rgba(59, 130, 246, 0.1);
+
+  /* ─── Text hierarchy ─── */
+  --text-primary: #e8eaed;
+  --text-secondary: #9ca3af;
+  --text-tertiary: #6b7280;
+  --text-muted: #4b5563;
+
+  /* ─── Borders ─── */
+  --border-primary: rgba(255, 255, 255, 0.08);
+  --border-secondary: rgba(255, 255, 255, 0.05);
+  --border-accent: rgba(16, 185, 129, 0.3);
+
+  /* ─── Gradients ─── */
+  --gradient-primary: linear-gradient(135deg, #10b981 0%, #3b82f6 100%);
+  --gradient-surface: linear-gradient(180deg, var(--surface-secondary) 0%, var(--surface-primary) 100%);
+  --gradient-glow: radial-gradient(ellipse at top, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* ─── Base Styles ─── */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans, "Inter", system-ui, -apple-system, sans-serif);
+}
+
+/* ─── Scrollbar styling (premium feel) ─── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-tertiary);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ─── Glassmorphism card effect ─── */
+.glass-card {
+  background: rgba(26, 29, 43, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+}
+
+/* ─── Glow effect on hover ─── */
+.glow-hover {
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.glow-hover:hover {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.1), 0 0 40px rgba(16, 185, 129, 0.05);
+  border-color: var(--border-accent);
+}
+
+/* ─── Pulse animation for loading states ─── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* ─── Slide-up entrance animation ─── */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.5s ease-out forwards;
+}
+
+/* ─── Staggered animation delays ─── */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+
+/* ─── Fade-in animation ─── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out forwards;
+}
+
+/* ─── Gradient text ─── */
+.gradient-text {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Severity badge styles ─── */
+.severity-critical {
+  background: var(--critical-bg);
+  color: var(--critical);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.severity-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.severity-info {
+  background: var(--info-bg);
+  color: var(--info);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
